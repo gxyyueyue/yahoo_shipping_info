@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+config.json
+dist/
+build/
+*.spec
+*.xlsx
+photos/
+.DS_Store
+.claude/
