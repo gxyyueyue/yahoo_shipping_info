@@ -52,8 +52,22 @@ _THIN = Border(
 _FILL_HEADER = PatternFill("solid", fgColor="2E5BBA")
 _LEFT = Alignment(horizontal="left", vertical="center")
 
-# Stop tokens that mark the end of a product code prefix
 _CODE_STOP = re.compile(r"新品|美品|★|\s")
+
+_KNOWN_CARRIERS = ["ヤマト運輸", "佐川急便", "日本郵便", "西濃運輸", "福山通運", "ゆうパック"]
+
+
+def _extract_carrier(delivery_method: str) -> str:
+    """Extract carrier name from delivery method.
+    'ヤマト宅急便（ヤマト運輸）' → 'ヤマト運輸'
+    """
+    m = re.search(r"[（(]([^）)]+)[）)]", delivery_method or "")
+    if m:
+        return m.group(1)
+    for carrier in _KNOWN_CARRIERS:
+        if carrier in (delivery_method or ""):
+            return carrier
+    return ""
 
 
 def _strip_postal(code: str) -> str:
@@ -131,7 +145,7 @@ def write_tic_excel(records: List[Dict], output_path: str) -> None:
             rec.get("都道府県", ""),                 # K お届け先住所１
             rec.get("市区町村", ""),                 # L お届け先住所２
             rec.get("詳細住所", ""),                 # M お届け先住所３
-            "",                                      # N 快递公司
+            _extract_carrier(rec.get("配送方法", "")),  # N 快递公司
             "",                                      # O 运单号
             "",                                      # P 配達日
             "",                                      # Q 配達指定時間帯
