@@ -24,7 +24,10 @@ from ocr_engine import create_engine
 from parser import FIELD_KEYS, check_status, parse
 from tic_writer import tic_output_path, write_tic_excel
 
-_CONFIG_FILE = Path(__file__).parent / "config.json"
+if getattr(sys, "frozen", False):
+    _CONFIG_FILE = Path(sys.executable).parent / "config.json"
+else:
+    _CONFIG_FILE = Path(__file__).parent / "config.json"
 _SUPPORTED_EXT = {".jpg", ".jpeg", ".png"}
 
 
