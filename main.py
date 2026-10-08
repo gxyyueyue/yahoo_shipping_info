@@ -7,6 +7,7 @@ Requires: pip install PyQt5
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
@@ -29,6 +30,7 @@ if getattr(sys, "frozen", False):
 else:
     _CONFIG_FILE = Path(__file__).parent / "config.json"
 _SUPPORTED_EXT = {".jpg", ".jpeg", ".png"}
+_CONCURRENCY = 5
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +47,9 @@ def _load_config() -> dict:
     return {
         "engine": "tongyi",
         "doubao_api_key": "",
-        "doubao_model": "doubao-1-5-vision-pro-32k-250115",
+        "doubao_model": "doubao-seed-2-0-lite-260428",
         "tongyi_api_key": "",
-        "tongyi_model": "qwen-vl-plus",
+        "tongyi_model": "qwen3.6-plus",
         "proxy": "",
     }
 
@@ -93,26 +95,37 @@ class Worker(QThread):
             return
 
         empty_fields = {k: "" for k in FIELD_KEYS}
+        total = len(self._images)
 
-        for i, img_path in enumerate(self._images):
-            if not self._running:
-                break
+        def process(img_path: str) -> dict:
             fname = os.path.basename(img_path)
-            self.signals.status.emit(f"処理中 ({i + 1}/{len(self._images)}): {fname}")
-
             try:
                 text   = ocr.recognize(img_path)
                 fields = parse(text)
                 status = check_status(fields)
-                records.append({"filename": fname, "status": status, **fields})
                 tag = "ok" if status == "OK" else "warn"
                 self.signals.log.emit(f"[{status}] {fname}", tag)
+                return {"filename": fname, "status": status, **fields}
             except Exception as exc:
-                records.append({"filename": fname, "status": "エラー", **empty_fields})
                 self.signals.log.emit(f"[エラー] {fname}: {exc}", "err")
+                return {"filename": fname, "status": "エラー", **empty_fields}
 
-            self.signals.progress.emit(i + 1)
+        # 单张图片的 API 延迟很高（通义 20–80 秒），并发请求以缩短总耗时
+        results = {}
+        with ThreadPoolExecutor(max_workers=_CONCURRENCY) as pool:
+            futures = {pool.submit(process, p): p for p in self._images}
+            self.signals.status.emit(f"処理中 (0/{total})… 同時 {_CONCURRENCY} 件")
+            for fut in as_completed(futures):
+                results[futures[fut]] = fut.result()
+                self.signals.progress.emit(len(results))
+                self.signals.status.emit(f"処理中 ({len(results)}/{total})… 同時 {_CONCURRENCY} 件")
+                if not self._running:
+                    # 取消尚未开始的任务，已在执行的任务会等待其完成
+                    pool.shutdown(wait=True, cancel_futures=True)
+                    break
 
+        # 停止时只保留已完成的结果，并保持原始文件顺序
+        records = [results[p] for p in self._images if p in results]
         self.signals.done.emit(records, self._out_path)
 
 
@@ -147,12 +160,8 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(QLabel("通义モデル:"), 2, 0)
         self._tongyi_model = QComboBox()
-        self._tongyi_model.addItems([
-            "qwen-vl-plus",
-            "qwen-vl-max",
-            "qwen2-vl-7b-instruct",
-        ])
-        self._tongyi_model.setCurrentText(cfg.get("tongyi_model", "qwen-vl-plus"))
+        self._tongyi_model.addItems(["qwen3.6-plus"])
+        self._tongyi_model.setCurrentText(cfg.get("tongyi_model", "qwen3.6-plus"))
         self._tongyi_model.setEditable(True)
         layout.addWidget(self._tongyi_model, 2, 1)
 
@@ -165,13 +174,8 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(QLabel("豆包モデル:"), 4, 0)
         self._doubao_model = QComboBox()
-        self._doubao_model.addItems([
-            "doubao-1-5-vision-pro-32k-250115",
-            "doubao-1.5-vision-pro-32k",
-            "doubao-vision-plus-32k",
-            "doubao-vision-lite-32k",
-        ])
-        self._doubao_model.setCurrentText(cfg.get("doubao_model", "doubao-1-5-vision-pro-32k-250115"))
+        self._doubao_model.addItems(["doubao-seed-2-0-lite-260428"])
+        self._doubao_model.setCurrentText(cfg.get("doubao_model", "doubao-seed-2-0-lite-260428"))
         self._doubao_model.setEditable(True)
         layout.addWidget(self._doubao_model, 4, 1)
 
@@ -222,7 +226,7 @@ class MainWindow(QMainWindow):
         tb = QHBoxLayout(toolbar)
         tb.setContentsMargins(8, 4, 8, 4)
         tb.addWidget(QLabel("OCRエンジン:"))
-        self._engine_lbl = QLabel(self._cfg.get("engine", "paddle").upper())
+        self._engine_lbl = QLabel(self._cfg.get("engine", "tongyi").upper())
         self._engine_lbl.setStyleSheet("color: #1565C0; font-weight: bold;")
         tb.addWidget(self._engine_lbl)
         tb.addSpacing(12)
@@ -385,10 +389,10 @@ class MainWindow(QMainWindow):
             kwargs["proxy"] = proxy
         if engine == "tongyi":
             kwargs["api_key"] = tongyi_key
-            kwargs["model"]   = self._cfg.get("tongyi_model", "qwen-vl-plus")
+            kwargs["model"]   = self._cfg.get("tongyi_model", "qwen3.6-plus")
         elif engine == "doubao":
             kwargs["api_key"] = doubao_key
-            kwargs["model"]   = self._cfg.get("doubao_model", "doubao-1-5-vision-pro-32k-250115")
+            kwargs["model"]   = self._cfg.get("doubao_model", "doubao-seed-2-0-lite-260428")
 
         self._start_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)

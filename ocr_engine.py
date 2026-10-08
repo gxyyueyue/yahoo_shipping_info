@@ -97,7 +97,7 @@ class DoubaoOCR(OCREngine):
 
     _BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "doubao-1-5-vision-pro-32k-250115"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "doubao-seed-2-0-lite-260428"):
         import openai
         self._client = openai.OpenAI(
             api_key=api_key or os.environ.get("ARK_API_KEY", ""),
@@ -118,6 +118,8 @@ class DoubaoOCR(OCREngine):
                 ],
             }],
             max_tokens=1000,
+            # 关闭深度思考，否则单张识别耗时大幅增加
+            extra_body={"thinking": {"type": "disabled"}},
         )
         return resp.choices[0].message.content or ""
 
@@ -127,7 +129,7 @@ class TongyiOCR(OCREngine):
 
     _BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "qwen-vl-plus"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "qwen3.6-plus"):
         import openai
         self._client = openai.OpenAI(
             api_key=api_key or os.environ.get("DASHSCOPE_API_KEY", ""),
@@ -148,6 +150,8 @@ class TongyiOCR(OCREngine):
                 ],
             }],
             max_tokens=1000,
+            # 关闭深度思考，否则单张识别耗时大幅增加
+            extra_body={"enable_thinking": False},
         )
         return resp.choices[0].message.content or ""
 

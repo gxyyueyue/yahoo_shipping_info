@@ -2,8 +2,8 @@
 Shipping field parser.
 
 Two modes:
-  1. JSON mode  — when OCR text is already a JSON object (OpenAI output).
-  2. Regex mode — fallback for raw OCR text (Google Vision output).
+  1. JSON mode  — when OCR text is already a JSON object (视觉大模型输出).
+  2. Regex mode — fallback for raw OCR text (非 JSON 的原始 OCR 文本).
 """
 
 import json
@@ -42,7 +42,7 @@ def parse(text: str) -> Dict[str, str]:
     if not text.strip():
         return result
 
-    # --- Try JSON first (structured output from OpenAI) ---
+    # --- Try JSON first (视觉大模型返回的结构化输出) ---
     json_str = _extract_json(text)
     if json_str:
         try:

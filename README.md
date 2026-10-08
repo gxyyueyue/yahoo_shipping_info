@@ -7,7 +7,7 @@
 ## 功能说明
 
 - 批量读取文件夹内的 jpg / jpeg / png 截图
-- 通过 OCR（OpenAI Vision 或 Google Vision）识别日文截图内容
+- 通过视觉大模型识别日文截图内容（通义 `qwen3.6-plus` 或 豆包 `doubao-seed-2-0-lite-260428`）
 - 自动提取：氏名、邮编、都道府县、市区町村、详细地址、配送方法、送料、商品名、落札価格、オークションID、落札者ID
 - 无法识别的字段留空，识别状态标记为"需人工确认"（Excel 中以黄色高亮显示）
 - 导出为格式化的 `shipping_info.xlsx`
@@ -36,8 +36,6 @@ source .venv/bin/activate       # macOS/Linux
 pip install -r requirements.txt
 ```
 
-> 如果只使用 Google Vision，将 `requirements.txt` 中 `google-cloud-vision` 一行的注释去掉，再重新 `pip install -r requirements.txt`。
-
 ---
 
 ## 配置 API Key
@@ -48,32 +46,24 @@ pip install -r requirements.txt
 
 ### 方式二：环境变量
 
-**OpenAI：**
 ```bash
-# macOS / Linux
-export OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
+# 通义（阿里云百炼 DashScope）
+export DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
 
-# Windows PowerShell
-$env:OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxx"
+# 豆包（火山方舟 Ark）
+export ARK_API_KEY=xxxxxxxxxxxxxxxx
 ```
 
-**Google Cloud Vision：**
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-```
+### 支持的引擎与模型
 
-### OpenAI API Key 获取方式
+| 引擎 | 模型 | API Key 获取 |
+|------|------|------|
+| `tongyi`（默认） | `qwen3.6-plus` | [阿里云百炼控制台](https://bailian.console.aliyun.com) → API-KEY 管理 |
+| `doubao` | `doubao-seed-2-0-lite-260428` | [火山方舟控制台](https://console.volcengine.com/ark) → API Key 管理；**需先在「开通管理」中开通该模型** |
 
-1. 访问 [platform.openai.com](https://platform.openai.com)
-2. 进入 **API Keys** 页面 → **Create new secret key**
-3. 账户需有 GPT-4o 访问权限（需绑定付款方式）
-
-### Google Cloud Vision 认证文件获取方式
-
-1. 在 Google Cloud Console 创建项目
-2. 启用 **Cloud Vision API**
-3. 创建服务账号，下载 JSON 密钥文件
-4. 在 GUI 设置中选择该 JSON 文件路径
+> 两个模型均为混合推理模型，代码中已关闭深度思考（通义 `enable_thinking: False`，豆包 `thinking: disabled`），否则单张识别耗时会大幅增加。
+>
+> 平台会定期下线旧模型（如原先使用的 `qwen-vl-plus`、`doubao-1-5-vision-pro-32k-250115`）。如调用报错模型不存在，请查看 [百炼模型下线公告](https://help.aliyun.com/zh/model-studio/model-depreciation) / [方舟模型下线公告](https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh)，并在 `main.py` 中更新模型名。
 
 ---
 
@@ -85,7 +75,7 @@ python main.py
 
 ### 使用步骤
 
-1. 点击 **[⚙ API設定]** → 选择引擎（openai / google）→ 输入 API Key → 保存
+1. 点击 **[⚙ API設定]** → 选择引擎（tongyi / doubao）→ 输入 API Key → 保存
 2. 点击 **画像フォルダ [選択]** → 选择存放截图的文件夹
 3. 点击 **出力ファイル [選択]** → 指定 Excel 输出路径（默认为 Downloads/shipping_info.xlsx）
 4. 点击 **[▶ 解析開始]** → 等待处理完成
@@ -122,24 +112,14 @@ python main.py
 ```
 yahoo_shipping_info/
 ├── main.py          # GUI 主程序
-├── ocr_engine.py    # OCR 引擎（OpenAI / Google / PaddleOCR 可插拔）
+├── ocr_engine.py    # OCR 引擎（通义 / 豆包，可插拔）
 ├── parser.py        # 文本解析，提取发货字段
 ├── excel_writer.py  # Excel 导出
+├── tic_writer.py    # TIC 格式导出
 ├── requirements.txt # 依赖列表
 ├── config.json      # 本地配置（首次运行后自动生成，勿提交到 git）
 └── README.md
 ```
-
----
-
-## 添加 PaddleOCR 本地离线模式
-
-如需在无网络环境下使用，可启用 `ocr_engine.py` 中的 `PaddleOCREngine` 存根：
-
-1. 取消 `requirements.txt` 中 `paddlepaddle` / `paddleocr` 的注释
-2. `pip install -r requirements.txt`
-3. 取消 `ocr_engine.py` 中 `PaddleOCREngine` 类及 `create_engine` 注册的注释
-4. 在 GUI 设置中选择引擎 `paddle`
 
 ---
 
@@ -182,13 +162,18 @@ pyinstaller --onefile --windowed \
 ## 常见问题
 
 **Q: 识别率低，很多字段为空**  
-A: 建议使用高分辨率（100% 缩放）全屏截图，确保字体清晰。OpenAI gpt-4o 的识别效果优于 gpt-4o-mini。
+A: 建议使用高分辨率（100% 缩放）全屏截图，确保字体清晰。
 
-**Q: OpenAI API 报错 `Incorrect API key`**  
-A: 检查 API Key 是否以 `sk-` 开头，确认账户余额充足。
+**Q: 报错 `Incorrect API key` / `InvalidApiKey`**  
+A: 确认填写的 Key 与所选引擎对应（通义用百炼的 Key，豆包用方舟的 Key），并确认账户余额充足。
+
+**Q: 豆包报错 `ModelNotOpen`**  
+A: 火山方舟账号尚未开通该模型，到方舟控制台「开通管理」中开通 `doubao-seed-2-0-lite-260428` 即可。
 
 **Q: 处理速度慢**  
-A: OpenAI Vision API 每张图约需 3–8 秒，100 张图约 10–15 分钟。如需提速可使用 gpt-4o-mini（精度略低）。
+A: 工具会同时处理 5 张图（`main.py` 中的 `_CONCURRENCY`）。实测 10 张：豆包约 23 秒，通义 `qwen3.6-plus` 约 2 分钟（通义单张带图请求本身需 20–80 秒，慢在阿里云服务端，换其他通义模型也一样）。
+- 追求速度：选豆包（片假名地址偶有误识别，建议人工核对）
+- 追求准确：选通义
 
 **Q: 在 Windows 上中文/日文显示乱码**  
 A: 确保系统已安装日文字体，或将 Excel 文件字体设置为 Meiryo / MS Gothic。
