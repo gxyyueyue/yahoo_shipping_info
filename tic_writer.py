@@ -140,7 +140,7 @@ def write_tic_excel(records: List[Dict], output_path: str) -> None:
             "",                                      # F 包裹毛重
             "",                                      # G 包裹净重
             rec.get("氏名", ""),                     # H お届け先名称１
-            rec.get("電話番号", "") or "080-4624-6473",  # I お届け先電話番号
+            rec.get("電話番号", "") or "000-0000-0000",  # I お届け先電話番号（未识别时用占位号码）
             _strip_postal(rec.get("郵便番号", "")),  # J お届け先郵便番号
             rec.get("都道府県", ""),                 # K お届け先住所１
             rec.get("市区町村", ""),                 # L お届け先住所２
